@@ -1,17 +1,16 @@
-//
-//  CaffeinatedApp.swift
-//  Caffeinated
-//
-//  Created by Aarush Agarwal on 5/17/26.
-//
-
 import SwiftUI
 
 @main
 struct CaffeinatedApp: App {
+    @StateObject private var manager = CaffeinateManager()
+
     var body: some Scene {
-        WindowGroup {
+        MenuBarExtra {
             ContentView()
+                .environmentObject(manager)
+        } label: {
+            Image(systemName: manager.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
         }
+        .menuBarExtraStyle(.window)
     }
 }
