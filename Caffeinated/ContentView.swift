@@ -85,20 +85,7 @@ struct ContentView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            MenuRow(
-                title: "Settings",
-                trailing: .chevron,
-                chevronRotation: settingsExpanded ? 90 : 0
-            ) {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    settingsExpanded.toggle()
-                }
-            }
-
-            if settingsExpanded {
-                settingsBody
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            settingsDisclosure
 
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
@@ -111,6 +98,28 @@ struct ContentView: View {
         }
         .padding(.vertical, 4)
         .onAppear { loginController.refresh() }
+    }
+
+    private var settingsDisclosure: some View {
+        VStack(spacing: 0) {
+            MenuRow(
+                title: "Settings",
+                trailing: .chevron,
+                chevronRotation: settingsExpanded ? 90 : 0
+            ) {
+                // Hover handles expansion; click is a no-op.
+            }
+
+            if settingsExpanded {
+                settingsBody
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                settingsExpanded = hovering
+            }
+        }
     }
 
     private var settingsBody: some View {
