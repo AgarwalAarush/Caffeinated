@@ -116,6 +116,8 @@ struct ContentView: View {
     private var settingsBody: some View {
         VStack(spacing: 0) {
             settingsRow("Open at Login", isOn: $loginController.isEnabled)
+            settingsRow("Pause on Battery", isOn: $manager.pauseOnBattery)
+            settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
         }
         .padding(.bottom, 2)
     }

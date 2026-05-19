@@ -2,6 +2,7 @@ import Foundation
 import IOKit.pwr_mgt
 import Combine
 import SwiftUI
+import UserNotifications
 
 enum CaffeinateDuration: Hashable, Identifiable {
     case indefinite
@@ -33,14 +34,52 @@ enum CaffeinateDuration: Hashable, Identifiable {
     ]
 }
 
+private enum PrefKey {
+    static let pauseOnBattery = "pauseOnBattery"
+    static let notifyOnTimerEnd = "notifyOnTimerEnd"
+}
+
 final class CaffeinateManager: ObservableObject {
     @Published private(set) var isActive: Bool = false
     @Published var selectedDuration: CaffeinateDuration = .indefinite
     @Published private(set) var remainingSeconds: TimeInterval?
 
+    /// When true, an AC → battery transition will turn Caffeinated off.
+    @Published var pauseOnBattery: Bool {
+        didSet {
+            guard pauseOnBattery != oldValue else { return }
+            UserDefaults.standard.set(pauseOnBattery, forKey: PrefKey.pauseOnBattery)
+        }
+    }
+
+    /// When true, fire a local notification when a timed session naturally
+    /// expires. Enabling this asks the system for notification permission.
+    @Published var notifyOnTimerEnd: Bool {
+        didSet {
+            guard notifyOnTimerEnd != oldValue else { return }
+            UserDefaults.standard.set(notifyOnTimerEnd, forKey: PrefKey.notifyOnTimerEnd)
+            if notifyOnTimerEnd {
+                requestNotificationAuthorizationIfNeeded()
+            }
+        }
+    }
+
+    private let powerMonitor = PowerSourceMonitor()
     private var assertionID: IOPMAssertionID = IOPMAssertionID(0)
     private var timer: Timer?
     private var endDate: Date?
+
+    init() {
+        self.pauseOnBattery = UserDefaults.standard.bool(forKey: PrefKey.pauseOnBattery)
+        self.notifyOnTimerEnd = UserDefaults.standard.bool(forKey: PrefKey.notifyOnTimerEnd)
+
+        powerMonitor.onTransitionToBattery = { [weak self] in
+            guard let self else { return }
+            if self.isActive && self.pauseOnBattery {
+                self.stop()
+            }
+        }
+    }
 
     deinit {
         if assertionID != 0 {
@@ -122,9 +161,37 @@ final class CaffeinateManager: ObservableObject {
         guard let end = endDate else { return }
         let remaining = end.timeIntervalSinceNow
         if remaining <= 0 {
+            let shouldNotify = notifyOnTimerEnd
             stop()
+            if shouldNotify {
+                postTimerEndedNotification()
+            }
         } else {
             remainingSeconds = remaining
         }
+    }
+
+    // MARK: - Notifications
+
+    private func requestNotificationAuthorizationIfNeeded() {
+        let center = UNUserNotificationCenter.current()
+        center.getNotificationSettings { settings in
+            guard settings.authorizationStatus == .notDetermined else { return }
+            center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        }
+    }
+
+    private func postTimerEndedNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Caffeinated"
+        content.body = "Timer ended — your Mac will sleep normally again."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "caffeinated.timer-ended.\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { _ in }
     }
 }
