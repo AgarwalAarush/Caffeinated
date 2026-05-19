@@ -30,9 +30,7 @@ struct ContentView: View {
                 set: { manager.setActive($0) }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .tint(.accentColor)
+            .toggleStyle(PillToggleStyle())
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -184,6 +182,39 @@ private struct MenuRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+// MARK: - Pill Toggle Style (iOS-style switch)
+
+struct PillToggleStyle: ToggleStyle {
+    var onColor: Color = .accentColor
+    var offColor: Color = Color.secondary.opacity(0.28)
+    var width: CGFloat = 38
+    var height: CGFloat = 22
+
+    func makeBody(configuration: Configuration) -> some View {
+        let knob = height - 4
+        let travel = (width - height) / 2
+
+        return HStack {
+            configuration.label
+            ZStack {
+                Capsule()
+                    .fill(configuration.isOn ? onColor : offColor)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: knob, height: knob)
+                    .shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
+                    .offset(x: configuration.isOn ? travel : -travel)
+            }
+            .frame(width: width, height: height)
+            .animation(.spring(response: 0.28, dampingFraction: 0.75), value: configuration.isOn)
+            .contentShape(Capsule())
+            .onTapGesture {
+                configuration.isOn.toggle()
+            }
+        }
     }
 }
 
