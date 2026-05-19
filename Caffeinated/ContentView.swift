@@ -4,7 +4,9 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var manager: CaffeinateManager
     @Environment(\.openURL) private var openURL
+    @StateObject private var loginController = LaunchAtLoginController()
     @State private var durationExpanded: Bool = true
+    @State private var settingsExpanded: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -83,9 +85,21 @@ struct ContentView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            MenuRow(title: "Settings", trailing: .chevron) {
-                // Reserved for future preferences (launch at login, etc.)
+            MenuRow(
+                title: "Settings",
+                trailing: .chevron,
+                chevronRotation: settingsExpanded ? 90 : 0
+            ) {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    settingsExpanded.toggle()
+                }
             }
+
+            if settingsExpanded {
+                settingsBody
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
                     openURL(url)
@@ -95,6 +109,28 @@ struct ContentView: View {
                 NSApp.terminate(nil)
             }
         }
+        .padding(.vertical, 4)
+        .onAppear { loginController.refresh() }
+    }
+
+    private var settingsBody: some View {
+        VStack(spacing: 0) {
+            settingsRow("Open at Login", isOn: $loginController.isEnabled)
+        }
+        .padding(.bottom, 2)
+    }
+
+    private func settingsRow(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(PillToggleStyle(width: 30, height: 18))
+        }
+        .padding(.horizontal, 26)
         .padding(.vertical, 4)
     }
 }
@@ -154,6 +190,7 @@ private struct MenuRow: View {
 
     let title: String
     var trailing: Trailing = .none
+    var chevronRotation: Double = 0
     let action: () -> Void
 
     @State private var hovering: Bool = false
@@ -168,6 +205,8 @@ private struct MenuRow: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(chevronRotation))
+                        .animation(.easeInOut(duration: 0.18), value: chevronRotation)
                 }
             }
             .padding(.horizontal, 14)
