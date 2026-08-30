@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.5
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Caffeinated.xcodeproj \
+            -scheme Caffeinated \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$GITHUB_WORKSPACE/build/DerivedData" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Package app
+        run: |
+          set -euo pipefail
+          APP="$GITHUB_WORKSPACE/build/DerivedData/Build/Products/Release/Caffeinated.app"
+          test -d "$APP"
+          ditto -c -k --keepParent "$APP" "$GITHUB_WORKSPACE/Caffeinated.zip"
+          ls -lh "$GITHUB_WORKSPACE/Caffeinated.zip"
+
+      - name: Upload Caffeinated.app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Caffeinated
+          path: Caffeinated.zip
+          if-no-files-found: error
