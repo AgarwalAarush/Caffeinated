@@ -35,17 +35,27 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             build
 
-      - name: Package app
+      # Stage the .app under a parent folder and upload that folder — not a
+      # pre-made zip. GitHub already wraps artifacts in a zip for download;
+      # uploading Caffeinated.zip nested another zip of the same name, and
+      # macOS Archive Utility then unwraps to a Contents folder instead of
+      # Caffeinated.app. path must be the parent of the .app, not the .app
+      # itself, or the zip root is Contents/ again.
+      - name: Stage app
         run: |
           set -euo pipefail
           APP="$GITHUB_WORKSPACE/build/DerivedData/Build/Products/Release/Caffeinated.app"
           test -d "$APP"
-          ditto -c -k --keepParent "$APP" "$GITHUB_WORKSPACE/Caffeinated.zip"
-          ls -lh "$GITHUB_WORKSPACE/Caffeinated.zip"
+          STAGE="$GITHUB_WORKSPACE/artifact"
+          mkdir -p "$STAGE"
+          ditto "$APP" "$STAGE/Caffeinated.app"
+          test -x "$STAGE/Caffeinated.app/Contents/MacOS/Caffeinated"
+          ls -laR "$STAGE/Caffeinated.app/Contents"
 
       - name: Upload Caffeinated.app
         uses: actions/upload-artifact@v4
         with:
           name: Caffeinated
-          path: Caffeinated.zip
+          path: artifact
+          include-hidden-files: true
           if-no-files-found: error
