@@ -54,17 +54,12 @@ struct ContentView: View {
     private var closedLidSection: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text("Keep going with the lid closed")
+                Text("Clamshell Mode")
                     .font(.system(size: 12))
                 Spacer()
                 Toggle("", isOn: $manager.closedLid)
                     .labelsHidden()
                     .toggleStyle(PillToggleStyle(width: 30, height: 18))
-            }
-            if manager.closedLid {
-                Text("Sleep fully disabled. Mind heat and power.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
             }
             if let error = manager.clamshellError {
                 Text(error)
@@ -74,18 +69,12 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        .help("Stay awake with the lid closed. No external display required.")
     }
 
     private var footer: some View {
         VStack(spacing: 0) {
-            disclosureRow("Settings", expanded: settingsExpanded) {
-                settingsExpanded.toggle()
-            }
-
-            if settingsExpanded {
-                settingsBody
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            settingsDisclosure
 
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
@@ -97,6 +86,26 @@ struct ContentView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var settingsDisclosure: some View {
+        VStack(spacing: 0) {
+            MenuRow(
+                title: "Settings",
+                trailing: .chevron,
+                chevronRotation: settingsExpanded ? 90 : 0
+            ) {}
+
+            if settingsExpanded {
+                settingsBody
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                settingsExpanded = hovering
+            }
+        }
     }
 
     private var settingsBody: some View {
@@ -194,7 +203,14 @@ private struct DurationPill: View {
 // MARK: - Menu Row
 
 private struct MenuRow: View {
+    enum Trailing {
+        case none
+        case chevron
+    }
+
     let title: String
+    var trailing: Trailing = .none
+    var chevronRotation: Double = 0
     let action: () -> Void
 
     @State private var hovering: Bool = false
@@ -205,6 +221,13 @@ private struct MenuRow: View {
                 Text(title)
                     .font(.system(size: 13))
                 Spacer()
+                if case .chevron = trailing {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(hovering ? Color.white.opacity(0.9) : Color.secondary)
+                        .rotationEffect(.degrees(chevronRotation))
+                        .animation(.easeInOut(duration: 0.18), value: chevronRotation)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 5)

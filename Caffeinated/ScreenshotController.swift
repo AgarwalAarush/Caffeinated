@@ -27,9 +27,9 @@ enum CaptureMode: String, CaseIterable, Identifiable {
 
     var help: String {
         switch self {
-        case .area: return "Drag to capture a region"
-        case .window: return "Click a window to capture it"
-        case .display: return "Click a display to capture it"
+        case .area: return "Drag a region. Esc cancels, Return confirms."
+        case .window: return "Click a window. Esc cancels."
+        case .display: return "Click a display. Esc cancels."
         }
     }
 }
@@ -67,14 +67,17 @@ final class ScreenshotController: ObservableObject {
         isCapturing = true
         statusMessage = nil
         PopoverDismiss.resign()
+        NSApp.activate(ignoringOtherApps: true)
 
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 180_000_000)
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            PopoverDismiss.resign()
             do {
                 let frozen = try await Self.freezeDisplays()
                 guard !frozen.isEmpty else {
                     permissionDenied = true
                     isCapturing = false
+                    statusMessage = "Screen Recording permission is required."
                     return
                 }
                 permissionDenied = false
@@ -82,6 +85,7 @@ final class ScreenshotController: ObservableObject {
                     self?.finish(with: image)
                 } onCancel: { [weak self] in
                     self?.isCapturing = false
+                    self?.statusMessage = "Cancelled"
                 }
                 self.session = session
                 session.present()
@@ -210,7 +214,9 @@ enum PopoverDismiss {
     static func resign() {
         for window in NSApp.windows where window.isVisible {
             let name = window.className
-            if name.contains("MenuBarExtra") || window.isFloatingPanel && window.frame.width < 420 {
+            if name.contains("MenuBarExtra")
+                || name.contains("StatusItem")
+                || (window.isFloatingPanel && window.frame.width < 420 && window.level != .screenSaver) {
                 window.orderOut(nil)
             }
         }
@@ -285,19 +291,25 @@ final class CaptureOverlaySession {
             }
             windows.append(window)
             window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(window.contentView)
         }
         windows.first?.makeKey()
+        windows.first?.makeFirstResponder(windows.first?.contentView)
 
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        let handleKey: (NSEvent) -> NSEvent? = { [weak self] event in
             if event.keyCode == 53 { // escape
                 self?.cancel()
                 return nil
             }
-            if event.keyCode == 36 || event.keyCode == 76 { // return
+            if event.keyCode == 36 || event.keyCode == 76 { // return / keypad enter
                 self?.windows.forEach { $0.confirmSelection() }
                 return nil
             }
             return event
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handleKey)
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            _ = handleKey(event)
         }
     }
 
@@ -447,6 +459,7 @@ final class FreezeOverlayView: NSView {
                 path.stroke()
                 drawSizeLabel(for: selection, localRect: local)
             }
+            drawHint("Drag a region · Esc cancels · Return captures")
         case .window:
             if let hover = hoverWindow {
                 let local = toLocal(hover.frame)
@@ -457,11 +470,25 @@ final class FreezeOverlayView: NSView {
                 path.stroke()
                 drawTitle(hover.title, in: local)
             }
+            drawHint("Click a window · Esc cancels")
         case .display:
             NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
             bounds.fill()
             drawTitle("Click to capture this display", in: bounds)
+            drawHint("Esc cancels")
         }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            onCancel?()
+            return
+        }
+        if event.keyCode == 36 || event.keyCode == 76 {
+            confirm()
+            return
+        }
+        super.keyDown(with: event)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -561,6 +588,19 @@ final class FreezeOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.72).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 4, yRadius: 4).fill()
         text.draw(at: NSPoint(x: origin.x + 5, y: origin.y), withAttributes: attrs)
+    }
+
+    private func drawHint(_ title: String) {
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let size = title.size(withAttributes: attrs)
+        let origin = NSPoint(x: bounds.midX - size.width / 2, y: 18)
+        let bg = NSRect(x: origin.x - 10, y: origin.y - 6, width: size.width + 20, height: size.height + 12)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        NSBezierPath(roundedRect: bg, xRadius: 8, yRadius: 8).fill()
+        title.draw(at: origin, withAttributes: attrs)
     }
 
     private func drawTitle(_ title: String, in rect: NSRect) {
