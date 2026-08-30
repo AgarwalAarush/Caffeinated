@@ -14,9 +14,10 @@ struct ContentView: View {
             Divider().padding(.horizontal, 10)
             durationSection
             Divider().padding(.horizontal, 10)
+            closedLidSection
+            Divider().padding(.horizontal, 10)
             footer
         }
-        .frame(width: 260)
         .padding(.vertical, 6)
     }
 
@@ -83,6 +84,31 @@ struct ContentView: View {
         }
     }
 
+    private var closedLidSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Keep going with the lid closed")
+                    .font(.system(size: 12))
+                Spacer()
+                Toggle("", isOn: $manager.closedLid)
+                    .labelsHidden()
+                    .toggleStyle(PillToggleStyle(width: 30, height: 18))
+            }
+            if manager.closedLid {
+                Text("Sleep fully disabled. Mind heat and power.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            if let error = manager.clamshellError {
+                Text(error)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
     private var footer: some View {
         VStack(spacing: 0) {
             settingsDisclosure
@@ -126,6 +152,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             settingsRow("Open at Login", isOn: $loginController.isEnabled)
             settingsRow("Pause on Battery", isOn: $manager.pauseOnBattery)
+            settingsRow("Allow Display Sleep", isOn: $manager.allowDisplaySleep)
             settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
         }
         .padding(.bottom, 2)
@@ -271,4 +298,5 @@ struct PillToggleStyle: ToggleStyle {
 #Preview {
     ContentView()
         .environmentObject(CaffeinateManager())
+        .frame(width: 280)
 }

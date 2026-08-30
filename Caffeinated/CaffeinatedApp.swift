@@ -1,17 +1,27 @@
 import SwiftUI
 import UserNotifications
+import AppKit
 
 @main
 struct CaffeinatedApp: App {
     @StateObject private var manager = CaffeinateManager()
+    @StateObject private var monitor = SystemMonitor()
+    @StateObject private var capture = ScreenshotController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            ContentView()
+            PopoverRoot(monitor: monitor, capture: capture)
                 .environmentObject(manager)
         } label: {
-            Image(systemName: manager.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
+            HStack(spacing: 4) {
+                Image(systemName: manager.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
+                if let countdown = manager.countdownLabel {
+                    Text(countdown)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                }
+            }
         }
         .menuBarExtraStyle(.window)
     }
@@ -20,6 +30,14 @@ struct CaffeinatedApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        ClamshellSleep.restoreIfStale()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if UserDefaults.standard.bool(forKey: ClamshellSleep.armedDefaultsKey) {
+            ClamshellSleep.setDisabled(false)
+            ClamshellSleep.markArmed(false)
+        }
     }
 
     // Show banner + sound even when the app is in the foreground (which is
