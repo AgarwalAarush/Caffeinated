@@ -7,6 +7,7 @@ import Darwin
 struct SystemSnapshot: Equatable {
     var cpuPercent: Double = 0
     var gpuPercent: Double?
+    var cpuReady: Bool = false
     var memoryUsedBytes: UInt64 = 0
     var memoryTotalBytes: UInt64 = 0
     var memoryPressure: MemoryPressure = .ok
@@ -15,6 +16,7 @@ struct SystemSnapshot: Equatable {
     var batteryPercent: Double?
     var batteryHealthPercent: Double?
     var batteryCycleCount: Int?
+    /// Signed: negative while discharging.
     var batteryWatts: Double?
     var batteryIsCharging: Bool = false
     var batteryOnAC: Bool = false
@@ -50,10 +52,6 @@ final class SystemMonitor: ObservableObject {
     func start() {
         guard !isRunning else { return }
         isRunning = true
-        if let load = Self.cpuLoad() {
-            previousCPU = load
-            hasPreviousCPU = true
-        }
         refresh()
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -67,6 +65,7 @@ final class SystemMonitor: ObservableObject {
         timer = nil
         isRunning = false
         hasPreviousCPU = false
+        snapshot.cpuReady = false
     }
 
     func refresh() {
@@ -76,6 +75,7 @@ final class SystemMonitor: ObservableObject {
         if let load = Self.cpuLoad() {
             if hasPreviousCPU {
                 next.cpuPercent = Self.cpuPercent(from: previousCPU, to: load)
+                next.cpuReady = true
             }
             previousCPU = load
             hasPreviousCPU = true
@@ -263,7 +263,7 @@ final class SystemMonitor: ObservableObject {
             // InstantAmperage is signed: negative while discharging.
             var milliamps = amperage_mA
             if milliamps > 32767 { milliamps -= 65536 } // 16-bit two's complement packed in a larger int
-            snapshot.batteryWatts = abs(voltage_mV * milliamps) / 1_000_000
+            snapshot.batteryWatts = (voltage_mV * milliamps) / 1_000_000
         } else if let adapter = props["AdapterDetails"] as? [String: Any],
                   let watts = number(adapter["Watts"]) {
             snapshot.batteryWatts = watts
@@ -309,5 +309,14 @@ enum ByteFormat {
         }
         let mb = 1_048_576.0
         return String(format: "%.0f MB", value / mb)
+    }
+
+    /// Compact used/total pair for the memory meter, e.g. `12.4/16 GB`.
+    static func memoryPair(used: UInt64, total: UInt64) -> String {
+        let gb = 1_073_741_824.0
+        if Double(total) >= gb {
+            return String(format: "%.1f/%.0f GB", Double(used) / gb, Double(total) / gb)
+        }
+        return "\(bytes(used))/\(bytes(total))"
     }
 }
