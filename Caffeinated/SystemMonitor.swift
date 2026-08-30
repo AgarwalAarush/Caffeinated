@@ -92,7 +92,9 @@ final class SystemMonitor: ObservableObject {
 
     private static func cpuLoad() -> host_cpu_load_info? {
         var info = host_cpu_load_info()
-        var count = HOST_CPU_LOAD_INFO_COUNT
+        var count = mach_msg_type_number_t(
+            MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size
+        )
         let kr = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
                 host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, rebound, &count)
@@ -158,7 +160,9 @@ final class SystemMonitor: ObservableObject {
         snapshot.memoryTotalBytes = ProcessInfo.processInfo.physicalMemory
 
         var stats = vm_statistics64()
-        var count = HOST_VM_INFO64_COUNT
+        var count = mach_msg_type_number_t(
+            MemoryLayout<vm_statistics64>.size / MemoryLayout<natural_t>.size
+        )
         let kr = withUnsafeMutablePointer(to: &stats) { pointer in
             pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)

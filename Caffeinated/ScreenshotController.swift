@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ScreenCaptureKit
 import SwiftUI
 import UniformTypeIdentifiers
