@@ -7,8 +7,14 @@ struct CaptureView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider().padding(.horizontal, 10)
+            if let status = controller.statusMessage {
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
+                    .padding(.bottom, 2)
+            }
             modes
             Divider().padding(.horizontal, 10)
             options
@@ -21,22 +27,6 @@ struct CaptureView: View {
             }
         }
         .task { await controller.requestPermission() }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Capture")
-                .font(.system(size: 13, weight: .semibold))
-            Spacer()
-            if let status = controller.statusMessage {
-                Text(status)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
     }
 
     private var modes: some View {
