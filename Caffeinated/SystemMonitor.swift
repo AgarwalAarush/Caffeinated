@@ -180,10 +180,12 @@ final class SystemMonitor: ObservableObject {
         let used = min(snapshot.memoryTotalBytes, active + wired + compressed)
         snapshot.memoryUsedBytes = used
 
+        // Compressed memory is normal on macOS; only tint the bar when
+        // free pages are actually scarce.
         let freeish = Double(free + speculative) / Double(max(1, snapshot.memoryTotalBytes))
-        if freeish < 0.05 || stats.swapouts > stats.swapins + 1000 {
+        if freeish < 0.04 {
             snapshot.memoryPressure = .urgent
-        } else if freeish < 0.15 || compressed > snapshot.memoryTotalBytes / 4 {
+        } else if freeish < 0.08 {
             snapshot.memoryPressure = .caution
         } else {
             snapshot.memoryPressure = .ok

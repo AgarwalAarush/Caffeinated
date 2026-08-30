@@ -10,59 +10,26 @@ struct ContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider().padding(.horizontal, 10)
             durationSection
             Divider().padding(.horizontal, 10)
             closedLidSection
             Divider().padding(.horizontal, 10)
             footer
         }
-        .padding(.vertical, 6)
+        .padding(.bottom, 6)
+        .onAppear { loginController.refresh() }
     }
 
     // MARK: - Sections
 
-    private var header: some View {
-        HStack {
-            Text("Caffeinated")
-                .font(.system(size: 13, weight: .semibold))
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { manager.isActive },
-                set: { manager.setActive($0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(PillToggleStyle())
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-    }
-
     private var durationSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    durationExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Text("Duration")
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(durationExpanded ? 0 : -90))
-                }
-                .contentShape(Rectangle())
+            disclosureRow("Duration", expanded: durationExpanded) {
+                durationExpanded.toggle()
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
 
             if durationExpanded {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     ForEach(Array(CaffeinateDuration.presets.enumerated()), id: \.element.id) { index, duration in
                         DurationPill(
                             duration: duration,
@@ -73,7 +40,7 @@ struct ContentView: View {
                         if index == 0 {
                             Text("·")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.secondary.opacity(0.6))
+                                .foregroundStyle(.secondary.opacity(0.55))
                                 .padding(.horizontal, 1)
                         }
                     }
@@ -85,7 +52,7 @@ struct ContentView: View {
     }
 
     private var closedLidSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack {
                 Text("Keep going with the lid closed")
                     .font(.system(size: 12))
@@ -106,12 +73,19 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
     }
 
     private var footer: some View {
         VStack(spacing: 0) {
-            settingsDisclosure
+            disclosureRow("Settings", expanded: settingsExpanded) {
+                settingsExpanded.toggle()
+            }
+
+            if settingsExpanded {
+                settingsBody
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
@@ -122,30 +96,7 @@ struct ContentView: View {
                 NSApp.terminate(nil)
             }
         }
-        .padding(.vertical, 4)
-        .onAppear { loginController.refresh() }
-    }
-
-    private var settingsDisclosure: some View {
-        VStack(spacing: 0) {
-            MenuRow(
-                title: "Settings",
-                trailing: .chevron,
-                chevronRotation: settingsExpanded ? 90 : 0
-            ) {
-                // Hover handles expansion; click is a no-op.
-            }
-
-            if settingsExpanded {
-                settingsBody
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.18)) {
-                settingsExpanded = hovering
-            }
-        }
+        .padding(.vertical, 2)
     }
 
     private var settingsBody: some View {
@@ -155,7 +106,29 @@ struct ContentView: View {
             settingsRow("Allow Display Sleep", isOn: $manager.allowDisplaySleep)
             settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
         }
-        .padding(.bottom, 2)
+        .padding(.bottom, 6)
+    }
+
+    private func disclosureRow(_ title: String, expanded: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                action()
+            }
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 0 : -90))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func settingsRow(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -168,8 +141,8 @@ struct ContentView: View {
                 .labelsHidden()
                 .toggleStyle(PillToggleStyle(width: 30, height: 18))
         }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
     }
 }
 
@@ -184,7 +157,7 @@ private struct DurationPill: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary.opacity(0.12)))
+                    .fill(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary.opacity(0.14)))
                     .frame(width: 26, height: 26)
                 content
             }
@@ -221,14 +194,7 @@ private struct DurationPill: View {
 // MARK: - Menu Row
 
 private struct MenuRow: View {
-    enum Trailing {
-        case none
-        case chevron
-    }
-
     let title: String
-    var trailing: Trailing = .none
-    var chevronRotation: Double = 0
     let action: () -> Void
 
     @State private var hovering: Bool = false
@@ -239,16 +205,9 @@ private struct MenuRow: View {
                 Text(title)
                     .font(.system(size: 13))
                 Spacer()
-                if case .chevron = trailing {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(chevronRotation))
-                        .animation(.easeInOut(duration: 0.18), value: chevronRotation)
-                }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 5)

@@ -6,8 +6,6 @@ struct StatsView: View {
     var body: some View {
         let snap = monitor.snapshot
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider().padding(.horizontal, 10)
             meters(snap)
             Divider().padding(.horizontal, 10)
             battery(snap)
@@ -16,21 +14,8 @@ struct StatsView: View {
         .onDisappear { monitor.stop() }
     }
 
-    private var header: some View {
-        HStack {
-            Text("Stats")
-                .font(.system(size: 13, weight: .semibold))
-            Spacer()
-            Text("live")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-    }
-
     private func meters(_ snap: SystemSnapshot) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             MeterRow(
                 title: "CPU",
                 detail: String(format: "%.0f%%", snap.cpuPercent),
@@ -54,11 +39,12 @@ struct StatsView: View {
             )
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
     }
 
     private func battery(_ snap: SystemSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Battery")
                     .font(.system(size: 12, weight: .semibold))
@@ -74,18 +60,11 @@ struct StatsView: View {
                 MeterBar(fraction: percent / 100, tone: batteryTone(percent, charging: snap.batteryIsCharging))
             }
 
-            HStack {
-                Text(batteryStateLabel(snap))
-                Spacer()
-                if let minutes = snap.batteryTimeRemainingMinutes {
-                    Text(minutesLabel(minutes))
-                        .monospacedDigit()
-                }
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
+            Text(batteryStateLabel(snap))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 statChip("Health", snap.batteryHealthPercent.map { String(format: "%.0f%%", $0) } ?? "—")
                 statChip("Cycles", snap.batteryCycleCount.map(String.init) ?? "—")
                 statChip("Power", snap.batteryWatts.map { String(format: "%.1f W", $0) } ?? "—")
@@ -93,20 +72,19 @@ struct StatsView: View {
                     statChip("Temp", String(format: "%.0f°", temp))
                 }
             }
-            .padding(.top, 2)
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.bottom, 14)
     }
 
     private func statChip(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,13 +95,6 @@ struct StatsView: View {
         if snap.batteryIsCharging { return "Charging" }
         if snap.batteryOnAC { return "On Power Adapter" }
         return "On Battery"
-    }
-
-    private func minutesLabel(_ minutes: Int) -> String {
-        let h = minutes / 60
-        let m = minutes % 60
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
     }
 
     private func pressureColor(_ pressure: SystemSnapshot.MemoryPressure) -> Color {
@@ -149,13 +120,13 @@ private struct MeterRow: View {
     var tone: Color = .accentColor
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                 Spacer()
                 Text(detail)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
@@ -178,6 +149,6 @@ private struct MeterBar: View {
                     .frame(width: max(4, geo.size.width * max(0, min(1, fraction))))
             }
         }
-        .frame(height: 6)
+        .frame(height: 5)
     }
 }

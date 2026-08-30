@@ -6,12 +6,11 @@ import AppKit
 struct CaffeinatedApp: App {
     @StateObject private var manager = CaffeinateManager()
     @StateObject private var monitor = SystemMonitor()
-    @StateObject private var capture = ScreenshotController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverRoot(monitor: monitor, capture: capture)
+            PopoverRoot(monitor: monitor)
                 .environmentObject(manager)
         } label: {
             HStack(spacing: 4) {
@@ -40,8 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    // Show banner + sound even when the app is in the foreground (which is
-    // any time the menu-bar popover is open).
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
