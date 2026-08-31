@@ -8,7 +8,7 @@ No Dock icon. Look for the coffee cup on the right side of the menu bar.
 
 Grab **Caffeinated.zip** from the [latest GitHub Release](https://github.com/AgarwalAarush/Caffeinated/releases/latest), unzip, and drag **Caffeinated.app** to Applications.
 
-The build is ad-hoc signed: right-click → **Open** the first time. After that, **Check for Updates** on the Awake tab (or Settings → Check Automatically) installs newer releases in place. You do not need GitHub Actions artifacts.
+The build is ad-hoc signed: right-click → **Open** the first time. After that, **Check for Updates…** (Settings in the popover, or the Caffeinated menu) opens a software-update window. Settings → Check Automatically looks for newer releases about every 12 hours. You do not need GitHub Actions artifacts.
 
 **The GitHub repo must be public** for in-app updates. The app calls `releases/latest` with no token; a private repo 404s both the API and the zip.
 
@@ -23,7 +23,7 @@ The build is ad-hoc signed: right-click → **Open** the first time. After that,
 - **Open at Login** — registers the app via `SMAppService` so it's there next time you log in.
 - **Pause on Battery** — opt-in. When enabled, Caffeinated turns itself off the moment your Mac switches from AC power to battery.
 - **Notify When Timer Ends** — opt-in. When a timed session expires naturally, a macOS notification banner lets you know it stopped.
-- **Check for Updates** — pulls `Caffeinated.zip` from GitHub Releases and replaces the app.
+- **Check for Updates…** — a software-update window (not a row in the popover). Pulls `Caffeinated.zip` from GitHub Releases and replaces the app.
 
 ### Stats
 
@@ -61,7 +61,7 @@ Power-source transitions are observed via `IOPSNotificationCreateRunLoopSource`.
 
 **Capture.** [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) takes a still of each display, then an overlay lets you crop. Saving uses `NSSavePanel`.
 
-**Updates.** The app calls GitHub’s `releases/latest` API, downloads `Caffeinated.zip`, swaps the running `.app` (with a backup restore if `ditto` fails), clears quarantine (`xattr -cr`), and relaunches via a detached `nohup` helper. Sparkle is skipped because CI/release builds are ad-hoc signed. The repo has to be public — private GitHub releases are invisible to an unauthenticated `URLSession`.
+**Updates.** **Check for Updates…** lives under Settings (and the Caffeinated app menu). It opens a small software-update window, then calls GitHub’s `releases/latest` API, downloads `Caffeinated.zip`, swaps the running `.app` (with a backup restore if `ditto` fails), clears quarantine (`xattr -cr`), and relaunches via a detached `nohup` helper. Sparkle is skipped because CI/release builds are ad-hoc signed. The repo has to be public — private GitHub releases are invisible to an unauthenticated `URLSession`.
 
 The app is not App-Sandboxed: closed-lid mode has to talk to `IOPMrootDomain`. Hardened Runtime stays on.
 
@@ -81,6 +81,7 @@ Caffeinated/
 ├── ScreenshotController.swift Frozen overlay, crop, preview, clipboard, save
 ├── LaunchAtLogin.swift        SMAppService wrapper
 ├── UpdateChecker.swift        GitHub Releases checker / in-place installer
+├── UpdatePrompt.swift         Software-update window
 └── Assets.xcassets/
     └── AppIcon.appiconset/    Custom coffee-mug icon (16–1024px)
 ```

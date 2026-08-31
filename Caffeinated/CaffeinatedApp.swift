@@ -31,6 +31,13 @@ struct CaffeinatedApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    UpdatePrompt.shared.present()
+                }
+            }
+        }
     }
 }
 
@@ -38,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         ClamshellSleep.restoreIfStale()
+        UpdateChecker.shared.onUpdateFound = {
+            UpdatePrompt.shared.present(recheck: false)
+        }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             UpdateChecker.shared.checkIfDue()

@@ -77,26 +77,6 @@ struct ContentView: View {
         VStack(spacing: 0) {
             settingsDisclosure
 
-            MenuRow(
-                title: updateRowTitle,
-                enabled: !updates.isBusy
-            ) {
-                Task {
-                    if updates.availableVersion != nil {
-                        await updates.install()
-                    } else {
-                        await updates.check(interactive: true)
-                    }
-                }
-            }
-            if !updates.status.isEmpty {
-                Text(updates.status)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 4)
-            }
-
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
                     openURL(url)
@@ -107,12 +87,6 @@ struct ContentView: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var updateRowTitle: String {
-        if updates.isBusy, updates.availableVersion != nil { return "Installing…" }
-        if let version = updates.availableVersion { return "Install \(version)" }
-        return "Check for Updates"
     }
 
     private var settingsDisclosure: some View {
@@ -142,6 +116,9 @@ struct ContentView: View {
             settingsRow("Allow Display Sleep", isOn: $manager.allowDisplaySleep)
             settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
             settingsRow("Check Automatically", isOn: $updates.autoCheck)
+            MenuRow(title: "Check for Updates...") {
+                UpdatePrompt.shared.present()
+            }
         }
         .padding(.bottom, 6)
     }

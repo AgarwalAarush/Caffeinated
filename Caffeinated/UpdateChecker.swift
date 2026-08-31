@@ -11,9 +11,17 @@ import Foundation
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
 
+    enum Phase: Equatable {
+        case idle, checking, current, available, failed, downloading, installing
+    }
+
     @Published var status: String = ""
     @Published var isBusy = false
     @Published var availableVersion: String?
+    @Published var phase: Phase = .idle
+
+    /// Silent auto-check found a newer build — show the update panel.
+    var onUpdateFound: (() -> Void)?
 
     @Published var autoCheck: Bool {
         didSet { UserDefaults.standard.set(autoCheck, forKey: PrefKey.autoCheck) }
@@ -42,6 +50,7 @@ final class UpdateChecker: ObservableObject {
     func check(interactive: Bool) async {
         guard !isBusy else { return }
         isBusy = true
+        phase = .checking
         if interactive { status = "Checking…" }
         defer { isBusy = false }
 
@@ -52,20 +61,34 @@ final class UpdateChecker: ObservableObject {
             if Self.isNewer(latest, than: currentVersion) {
                 availableVersion = latest
                 status = "\(latest) is available"
+                phase = .available
+                if !interactive { onUpdateFound?() }
             } else {
                 availableVersion = nil
-                if interactive { status = "You’re on \(currentVersion)" }
-                else { status = "" }
+                if interactive {
+                    status = "You’re on \(currentVersion)"
+                    phase = .current
+                } else {
+                    status = ""
+                    phase = .idle
+                }
             }
         } catch {
             availableVersion = nil
-            if interactive { status = "Couldn’t check for updates" }
+            if interactive {
+                status = "Couldn’t check for updates"
+                phase = .failed
+            } else {
+                status = ""
+                phase = .idle
+            }
         }
     }
 
     func install() async {
         guard !isBusy else { return }
         isBusy = true
+        phase = .downloading
         status = "Downloading…"
         defer { isBusy = false }
 
@@ -73,16 +96,20 @@ final class UpdateChecker: ObservableObject {
             let release = try await fetchLatest()
             guard let asset = pickZip(release.assets) else {
                 status = "Release has no zip"
+                phase = .failed
                 return
             }
             let zip = try await download(asset.browser_download_url)
+            phase = .installing
             status = "Installing…"
             let newApp = try unzipApp(from: zip)
             try relaunch(replacing: Bundle.main.bundleURL, with: newApp)
         } catch let error as UpdateError {
             status = error.userMessage
+            phase = .failed
         } catch {
             status = "Update failed"
+            phase = .failed
         }
     }
 
