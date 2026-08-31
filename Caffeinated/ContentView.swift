@@ -3,6 +3,7 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var manager: CaffeinateManager
+    @EnvironmentObject private var updates: UpdateChecker
     @Environment(\.openURL) private var openURL
     @StateObject private var loginController = LaunchAtLoginController()
     @State private var durationExpanded: Bool = true
@@ -114,6 +115,10 @@ struct ContentView: View {
             settingsRow("Pause on Battery", isOn: $manager.pauseOnBattery)
             settingsRow("Allow Display Sleep", isOn: $manager.allowDisplaySleep)
             settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
+            settingsRow("Check Automatically", isOn: $updates.autoCheck)
+            MenuRow(title: "Check for Updates...") {
+                UpdatePrompt.shared.present()
+            }
         }
         .padding(.bottom, 6)
     }
@@ -211,6 +216,7 @@ private struct MenuRow: View {
     let title: String
     var trailing: Trailing = .none
     var chevronRotation: Double = 0
+    var enabled: Bool = true
     let action: () -> Void
 
     @State private var hovering: Bool = false
@@ -240,6 +246,7 @@ private struct MenuRow: View {
             .foregroundStyle(hovering ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .onHover { hovering = $0 }
     }
 }
@@ -280,5 +287,6 @@ struct PillToggleStyle: ToggleStyle {
 #Preview {
     ContentView()
         .environmentObject(CaffeinateManager())
+        .environmentObject(UpdateChecker.shared)
         .frame(width: 280)
 }
