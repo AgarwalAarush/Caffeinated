@@ -13,6 +13,12 @@ struct CaffeinatedApp: App {
         MenuBarExtra {
             PopoverRoot(monitor: monitor, capture: capture)
                 .environmentObject(manager)
+                .onAppear {
+                    CaptureHotKeys.shared.onCapture = { [capture] mode in
+                        capture.begin(mode)
+                    }
+                    CaptureHotKeys.shared.start()
+                }
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: manager.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")

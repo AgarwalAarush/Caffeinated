@@ -27,9 +27,9 @@ enum CaptureMode: String, CaseIterable, Identifiable {
 
     var help: String {
         switch self {
-        case .area: return "Drag to capture a region"
-        case .window: return "Click a window to capture it"
-        case .display: return "Click a display to capture it"
+        case .area: return "Drag a region. Esc cancels, Return confirms."
+        case .window: return "Click a window. Esc cancels."
+        case .display: return "Click a display. Esc cancels."
         }
     }
 }
@@ -47,7 +47,7 @@ final class ScreenshotController: ObservableObject {
     @Published var statusMessage: String?
 
     private var session: CaptureOverlaySession?
-    private var preview: CapturePreviewPanel?
+    private var preview: CaptureEditorPanel?
 
     init() {
         self.copyOnCapture = UserDefaults.standard.object(forKey: "copyOnCapture") as? Bool ?? true
@@ -67,14 +67,17 @@ final class ScreenshotController: ObservableObject {
         isCapturing = true
         statusMessage = nil
         PopoverDismiss.resign()
+        NSApp.activate(ignoringOtherApps: true)
 
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 180_000_000)
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            PopoverDismiss.resign()
             do {
                 let frozen = try await Self.freezeDisplays()
                 guard !frozen.isEmpty else {
                     permissionDenied = true
                     isCapturing = false
+                    statusMessage = "Screen Recording permission is required."
                     return
                 }
                 permissionDenied = false
@@ -82,6 +85,7 @@ final class ScreenshotController: ObservableObject {
                     self?.finish(with: image)
                 } onCancel: { [weak self] in
                     self?.isCapturing = false
+                    self?.statusMessage = "Cancelled"
                 }
                 self.session = session
                 session.present()
@@ -102,7 +106,7 @@ final class ScreenshotController: ObservableObject {
             copyToClipboard(image)
             statusMessage = "Copied to clipboard"
         }
-        showPreview(image)
+        showEditor(image)
     }
 
     func copyLast() {
@@ -142,15 +146,40 @@ final class ScreenshotController: ObservableObject {
         }
     }
 
-    private func showPreview(_ image: NSImage) {
-        preview?.close()
-        let panel = CapturePreviewPanel(image: image) { [weak self] in
-            self?.copyLast()
-        } onSave: { [weak self] in
-            self?.saveLast()
-        } onClose: { [weak self] in
-            self?.preview = nil
+    func editLast() {
+        guard let lastImage else { return }
+        showEditor(lastImage)
+    }
+
+    func copyEdited(_ image: NSImage) {
+        lastImage = image
+        copyToClipboard(image)
+        statusMessage = "Copied to clipboard"
+    }
+
+    func saveEdited(_ image: NSImage) {
+        lastImage = image
+        save(image)
+    }
+
+    private func showEditor(_ image: NSImage) {
+        if let existing = preview {
+            existing.orderOut(nil)
         }
+        preview = nil
+        let panel = CaptureEditorPanel(
+            image: image,
+            onCopy: { [weak self] output in
+                self?.copyEdited(output)
+            },
+            onSave: { [weak self] output in
+                self?.saveEdited(output)
+            },
+            onClose: { [weak self] output in
+                if let output { self?.lastImage = output }
+                self?.preview = nil
+            }
+        )
         preview = panel
         panel.show()
     }
@@ -210,7 +239,9 @@ enum PopoverDismiss {
     static func resign() {
         for window in NSApp.windows where window.isVisible {
             let name = window.className
-            if name.contains("MenuBarExtra") || window.isFloatingPanel && window.frame.width < 420 {
+            if name.contains("MenuBarExtra")
+                || name.contains("StatusItem")
+                || (window.isFloatingPanel && window.frame.width < 420 && window.level != .screenSaver) {
                 window.orderOut(nil)
             }
         }
@@ -285,19 +316,25 @@ final class CaptureOverlaySession {
             }
             windows.append(window)
             window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(window.contentView)
         }
         windows.first?.makeKey()
+        windows.first?.makeFirstResponder(windows.first?.contentView)
 
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        let handleKey: (NSEvent) -> NSEvent? = { [weak self] event in
             if event.keyCode == 53 { // escape
                 self?.cancel()
                 return nil
             }
-            if event.keyCode == 36 || event.keyCode == 76 { // return
+            if event.keyCode == 36 || event.keyCode == 76 { // return / keypad enter
                 self?.windows.forEach { $0.confirmSelection() }
                 return nil
             }
             return event
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handleKey)
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            _ = handleKey(event)
         }
     }
 
@@ -447,6 +484,7 @@ final class FreezeOverlayView: NSView {
                 path.stroke()
                 drawSizeLabel(for: selection, localRect: local)
             }
+            drawHint("Drag a region · Esc cancels · Return captures")
         case .window:
             if let hover = hoverWindow {
                 let local = toLocal(hover.frame)
@@ -457,11 +495,25 @@ final class FreezeOverlayView: NSView {
                 path.stroke()
                 drawTitle(hover.title, in: local)
             }
+            drawHint("Click a window · Esc cancels")
         case .display:
             NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
             bounds.fill()
             drawTitle("Click to capture this display", in: bounds)
+            drawHint("Esc cancels")
         }
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            onCancel?()
+            return
+        }
+        if event.keyCode == 36 || event.keyCode == 76 {
+            confirm()
+            return
+        }
+        super.keyDown(with: event)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -563,6 +615,19 @@ final class FreezeOverlayView: NSView {
         text.draw(at: NSPoint(x: origin.x + 5, y: origin.y), withAttributes: attrs)
     }
 
+    private func drawHint(_ title: String) {
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let size = title.size(withAttributes: attrs)
+        let origin = NSPoint(x: bounds.midX - size.width / 2, y: 18)
+        let bg = NSRect(x: origin.x - 10, y: origin.y - 6, width: size.width + 20, height: size.height + 12)
+        NSColor.black.withAlphaComponent(0.72).setFill()
+        NSBezierPath(roundedRect: bg, xRadius: 8, yRadius: 8).fill()
+        title.draw(at: origin, withAttributes: attrs)
+    }
+
     private func drawTitle(_ title: String, in rect: NSRect) {
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
@@ -577,103 +642,5 @@ final class FreezeOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.72).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 6, yRadius: 6).fill()
         title.draw(at: origin, withAttributes: attrs)
-    }
-}
-
-// MARK: - Preview panel
-
-final class CapturePreviewPanel: NSPanel {
-    private var onClose: () -> Void
-
-    init(
-        image: NSImage,
-        onCopy: @escaping () -> Void,
-        onSave: @escaping () -> Void,
-        onClose: @escaping () -> Void
-    ) {
-        self.onClose = onClose
-        let width: CGFloat = 280
-        let maxImageHeight: CGFloat = 160
-        let aspect = image.size.height == 0 ? 1 : image.size.width / image.size.height
-        let imageHeight = min(maxImageHeight, width / max(aspect, 0.3))
-        let height = imageHeight + 52
-
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        title = "Capture"
-        titlebarAppearsTransparent = true
-        isFloatingPanel = true
-        level = .floating
-        hidesOnDeactivate = false
-        isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-
-        let root = CapturePreviewView(
-            image: image,
-            imageHeight: imageHeight,
-            onCopy: onCopy,
-            onSave: onSave,
-            onClose: { [weak self] in
-                self?.close()
-            }
-        )
-        contentView = NSHostingView(rootView: root)
-    }
-
-    func show() {
-        NSApp.activate(ignoringOtherApps: true)
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let vis = screen.visibleFrame
-            let origin = NSPoint(x: vis.maxX - frame.width - 16, y: vis.maxY - frame.height - 16)
-            setFrameOrigin(origin)
-        }
-        makeKeyAndOrderFront(nil)
-    }
-
-    override func close() {
-        super.close()
-        onClose()
-    }
-}
-
-private struct CapturePreviewView: View {
-    let image: NSImage
-    let imageHeight: CGFloat
-    let onCopy: () -> Void
-    let onSave: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: imageHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.horizontal, 10)
-                .padding(.top, 28)
-            HStack(spacing: 8) {
-                previewButton("Copy", action: onCopy)
-                previewButton("Save…", action: onSave)
-                previewButton("Done", action: onClose)
-            }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 10)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func previewButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-        }
-        .buttonStyle(.bordered)
     }
 }

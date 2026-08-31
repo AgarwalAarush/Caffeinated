@@ -3,7 +3,6 @@ import AppKit
 
 struct CaptureView: View {
     @ObservedObject var controller: ScreenshotController
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -16,6 +15,7 @@ struct CaptureView: View {
                     .padding(.bottom, 2)
             }
             modes
+            hint
             Divider().padding(.horizontal, 10)
             options
             if controller.permissionDenied {
@@ -33,7 +33,6 @@ struct CaptureView: View {
         HStack(spacing: 8) {
             ForEach(CaptureMode.allCases) { mode in
                 Button {
-                    dismiss()
                     controller.begin(mode)
                 } label: {
                     VStack(spacing: 6) {
@@ -55,7 +54,19 @@ struct CaptureView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
+    private var hint: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("⌃⇧4 Selection · ⌃⇧5 Window · ⌃⇧3 Screen")
+            Text("Esc cancels overlay · Return confirms a selection")
+        }
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
     }
 
     private var options: some View {
@@ -91,6 +102,7 @@ struct CaptureView: View {
                 .frame(maxHeight: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             HStack(spacing: 8) {
+                Button("Edit") { controller.editLast() }
                 Button("Copy") { controller.copyLast() }
                 Button("Save…") { controller.saveLast() }
                 Spacer()
