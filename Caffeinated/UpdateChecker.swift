@@ -4,6 +4,9 @@ import Foundation
 
 /// Checks GitHub Releases and replaces this .app in place.
 /// Sparkle is the usual Mac path, but it wants a Developer ID; CI builds are ad-hoc.
+///
+/// The GitHub repo must be **public**. Private repos 404 both `releases/latest`
+/// and the zip URL for an unauthenticated `URLSession` (the app has no token).
 @MainActor
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
@@ -54,9 +57,6 @@ final class UpdateChecker: ObservableObject {
                 if interactive { status = "You’re on \(currentVersion)" }
                 else { status = "" }
             }
-        } catch UpdateError.noReleases {
-            availableVersion = nil
-            if interactive { status = "No releases yet" }
         } catch {
             availableVersion = nil
             if interactive { status = "Couldn’t check for updates" }
@@ -95,16 +95,19 @@ final class UpdateChecker: ObservableObject {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!)
         request.setValue("Caffeinated/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 404 { throw UpdateError.noReleases }
-            if http.statusCode != 200 { throw UpdateError.http(http.statusCode) }
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw UpdateError.http(http.statusCode)
         }
         return try JSONDecoder().decode(GitHubRelease.self, from: data)
     }
 
     private func download(_ url: URL) async throws -> URL {
-        let (temp, _) = try await URLSession.shared.download(from: url)
+        let (temp, response) = try await URLSession.shared.download(from: url)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw UpdateError.http(http.statusCode)
+        }
         let dest = FileManager.default.temporaryDirectory
             .appendingPathComponent("Caffeinated-\(UUID().uuidString).zip")
         try? FileManager.default.removeItem(at: dest)
@@ -124,41 +127,94 @@ final class UpdateChecker: ObservableObject {
         guard proc.terminationStatus == 0 else { throw UpdateError.unzipFailed }
 
         let direct = dest.appendingPathComponent("Caffeinated.app")
-        if FileManager.default.fileExists(atPath: direct.path) { return direct }
-        if let found = FileManager.default.enumerator(at: dest, includingPropertiesForKeys: nil)?
+        let found: URL
+        if FileManager.default.fileExists(atPath: direct.path) {
+            found = direct
+        } else if let match = FileManager.default.enumerator(at: dest, includingPropertiesForKeys: nil)?
             .compactMap({ $0 as? URL })
             .first(where: { $0.lastPathComponent == "Caffeinated.app" && $0.pathExtension == "app" }) {
-            return found
+            found = match
+        } else {
+            throw UpdateError.unzipFailed
         }
-        throw UpdateError.unzipFailed
+
+        let exe = found.appendingPathComponent("Contents/MacOS/Caffeinated")
+        guard FileManager.default.isExecutableFile(atPath: exe.path) else {
+            throw UpdateError.unzipFailed
+        }
+        return found
     }
 
     private func relaunch(replacing app: URL, with newApp: URL) throws {
-        let parent = app.deletingLastPathComponent()
-        guard FileManager.default.isWritableFile(atPath: parent.path) else {
+        if app.path.contains("/AppTranslocation/") {
             throw UpdateError.notWritable
         }
+        try assertParentWritable(app.deletingLastPathComponent())
+
         let pid = ProcessInfo.processInfo.processIdentifier
+        let quotedApp = Self.shQuote(app.path)
+        let quotedNew = Self.shQuote(newApp.path)
+        let quotedBackup = Self.shQuote(app.path + ".caffeinated-old")
         let script = """
         #!/bin/bash
+        trap '' HUP
         set -euo pipefail
+        APP=\(quotedApp)
+        NEW=\(quotedNew)
+        BACKUP=\(quotedBackup)
+        LOG="${HOME}/Library/Logs/Caffeinated-update.log"
+        mkdir -p "$(dirname "$LOG")"
+        exec >>"$LOG" 2>&1
+        echo "$(date) waiting for pid \(pid)"
         while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done
-        rm -rf \(Self.shQuote(app.path))
-        /usr/bin/ditto \(Self.shQuote(newApp.path)) \(Self.shQuote(app.path))
-        /usr/bin/xattr -cr \(Self.shQuote(app.path)) || true
-        /usr/bin/open \(Self.shQuote(app.path))
+        sleep 0.4
+        rm -rf "$BACKUP"
+        if [ -e "$APP" ]; then
+          mv "$APP" "$BACKUP"
+        fi
+        if ! /usr/bin/ditto "$NEW" "$APP"; then
+          echo "ditto failed; restoring backup"
+          rm -rf "$APP"
+          if [ -e "$BACKUP" ]; then mv "$BACKUP" "$APP"; fi
+          exit 1
+        fi
+        rm -rf "$BACKUP"
+        /usr/bin/xattr -cr "$APP" || true
+        echo "$(date) launching"
+        /usr/bin/open "$APP"
         """
         let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("caffeinated-relaunch.sh")
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        try launchDetached(scriptURL)
+        NSApp.terminate(nil)
+    }
 
+    /// Start the helper in the background and wait for the launcher to exit so
+    /// `Process` deinit / app quit cannot take the updater with it.
+    private func launchDetached(_ scriptURL: URL) throws {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/bash")
-        proc.arguments = [scriptURL.path]
+        proc.arguments = [
+            "-c",
+            "trap '' HUP; /usr/bin/nohup \(Self.shQuote(scriptURL.path)) >/dev/null 2>&1 &"
+        ]
+        proc.standardInput = FileHandle.nullDevice
         proc.standardOutput = FileHandle.nullDevice
         proc.standardError = FileHandle.nullDevice
         try proc.run()
-        NSApp.terminate(nil)
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else { throw UpdateError.relaunchFailed }
+    }
+
+    private func assertParentWritable(_ parent: URL) throws {
+        let probe = parent.appendingPathComponent(".caffeinated-write-test-\(UUID().uuidString)")
+        do {
+            try Data().write(to: probe)
+            try FileManager.default.removeItem(at: probe)
+        } catch {
+            throw UpdateError.notWritable
+        }
     }
 
     static func normalize(_ tag: String) -> String {
@@ -187,14 +243,14 @@ final class UpdateChecker: ObservableObject {
     }
 
     private enum UpdateError: Error {
-        case noReleases, unzipFailed, notWritable, http(Int)
+        case unzipFailed, notWritable, http(Int), relaunchFailed
 
         var userMessage: String {
             switch self {
-            case .noReleases: return "No releases yet"
             case .unzipFailed: return "Couldn’t unpack update"
             case .notWritable: return "Move the app to Applications, then retry"
             case .http: return "Couldn’t download update"
+            case .relaunchFailed: return "Couldn’t start installer"
             }
         }
     }

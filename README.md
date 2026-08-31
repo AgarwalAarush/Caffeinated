@@ -10,6 +10,8 @@ Grab **Caffeinated.zip** from the [latest GitHub Release](https://github.com/Aga
 
 The build is ad-hoc signed: right-click → **Open** the first time. After that, **Check for Updates** on the Awake tab (or Settings → Check Automatically) installs newer releases in place. You do not need GitHub Actions artifacts.
 
+**The GitHub repo must be public** for in-app updates. The app calls `releases/latest` with no token; a private repo 404s both the API and the zip.
+
 ## Features
 
 ### Awake
@@ -59,7 +61,7 @@ Power-source transitions are observed via `IOPSNotificationCreateRunLoopSource`.
 
 **Capture.** [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) takes a still of each display, then an overlay lets you crop. Saving uses `NSSavePanel`.
 
-**Updates.** The app calls GitHub’s `releases/latest` API, downloads `Caffeinated.zip`, replaces the running `.app`, clears quarantine (`xattr -cr`), and relaunches. Sparkle is skipped because CI/release builds are ad-hoc signed.
+**Updates.** The app calls GitHub’s `releases/latest` API, downloads `Caffeinated.zip`, swaps the running `.app` (with a backup restore if `ditto` fails), clears quarantine (`xattr -cr`), and relaunches via a detached `nohup` helper. Sparkle is skipped because CI/release builds are ad-hoc signed. The repo has to be public — private GitHub releases are invisible to an unauthenticated `URLSession`.
 
 The app is not App-Sandboxed: closed-lid mode has to talk to `IOPMrootDomain`. Hardened Runtime stays on.
 
