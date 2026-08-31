@@ -13,6 +13,7 @@ struct CaffeinatedApp: App {
         MenuBarExtra {
             PopoverRoot(monitor: monitor, capture: capture)
                 .environmentObject(manager)
+                .environmentObject(UpdateChecker.shared)
                 .onAppear {
                     CaptureHotKeys.shared.onCapture = { [capture] mode in
                         capture.begin(mode)
@@ -37,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
         ClamshellSleep.restoreIfStale()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            UpdateChecker.shared.checkIfDue()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

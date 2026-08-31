@@ -4,6 +4,12 @@ A lightweight macOS menu bar utility that keeps your Mac awake — plus a live s
 
 No Dock icon. Look for the coffee cup on the right side of the menu bar.
 
+## Install
+
+Grab **Caffeinated.zip** from the [latest GitHub Release](https://github.com/AgarwalAarush/Caffeinated/releases/latest), unzip, and drag **Caffeinated.app** to Applications.
+
+The build is ad-hoc signed: right-click → **Open** the first time. After that, **Check for Updates** on the Awake tab (or Settings → Check Automatically) installs newer releases in place. You do not need GitHub Actions artifacts.
+
 ## Features
 
 ### Awake
@@ -15,6 +21,7 @@ No Dock icon. Look for the coffee cup on the right side of the menu bar.
 - **Open at Login** — registers the app via `SMAppService` so it's there next time you log in.
 - **Pause on Battery** — opt-in. When enabled, Caffeinated turns itself off the moment your Mac switches from AC power to battery.
 - **Notify When Timer Ends** — opt-in. When a timed session expires naturally, a macOS notification banner lets you know it stopped.
+- **Check for Updates** — pulls `Caffeinated.zip` from GitHub Releases and replaces the app.
 
 ### Stats
 
@@ -52,6 +59,8 @@ Power-source transitions are observed via `IOPSNotificationCreateRunLoopSource`.
 
 **Capture.** [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit) takes a still of each display, then an overlay lets you crop. Saving uses `NSSavePanel`.
 
+**Updates.** The app calls GitHub’s `releases/latest` API, downloads `Caffeinated.zip`, replaces the running `.app`, clears quarantine (`xattr -cr`), and relaunches. Sparkle is skipped because CI/release builds are ad-hoc signed.
+
 The app is not App-Sandboxed: closed-lid mode has to talk to `IOPMrootDomain`. Hardened Runtime stays on.
 
 ## Project layout
@@ -69,6 +78,7 @@ Caffeinated/
 ├── SystemMonitor.swift        CPU / GPU / RAM / disk / battery sampler
 ├── ScreenshotController.swift Frozen overlay, crop, preview, clipboard, save
 ├── LaunchAtLogin.swift        SMAppService wrapper
+├── UpdateChecker.swift        GitHub Releases checker / in-place installer
 └── Assets.xcassets/
     └── AppIcon.appiconset/    Custom coffee-mug icon (16–1024px)
 ```
@@ -84,6 +94,8 @@ xcodebuild -project Caffeinated.xcodeproj -scheme Caffeinated -configuration Rel
 ```
 
 Or open `Caffeinated.xcodeproj` in Xcode and hit Cmd-R.
+
+Push a `v*` tag to publish a GitHub Release (`Caffeinated.zip`) via `.github/workflows/release.yml`. PR builds still upload an Actions artifact for testing; that is not the update feed.
 
 The app is configured with `LSUIElement = true`, so it has no Dock icon — look for the coffee cup in the right side of your menu bar after launch.
 
@@ -101,6 +113,7 @@ Preferences live behind the **Settings** disclosure on the Awake tab and are per
 | Pause on Battery | off | Auto-disables Caffeinated on AC → Battery transition |
 | Allow Display Sleep | off | Prevents idle *system* sleep but lets the display dim |
 | Notify When Timer Ends | off | Posts a `UNUserNotification` when a timed session naturally expires |
+| Check Automatically | on | Looks for a newer GitHub Release about every 12 hours |
 | Copy to Clipboard | on | Capture tab: copy each shot automatically |
 
 Closed-lid is a session option on the Awake tab, not buried in Settings.

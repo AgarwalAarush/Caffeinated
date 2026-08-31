@@ -3,6 +3,7 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var manager: CaffeinateManager
+    @EnvironmentObject private var updates: UpdateChecker
     @Environment(\.openURL) private var openURL
     @StateObject private var loginController = LaunchAtLoginController()
     @State private var durationExpanded: Bool = true
@@ -76,6 +77,26 @@ struct ContentView: View {
         VStack(spacing: 0) {
             settingsDisclosure
 
+            MenuRow(
+                title: updateRowTitle,
+                enabled: !updates.isBusy
+            ) {
+                Task {
+                    if updates.availableVersion != nil {
+                        await updates.install()
+                    } else {
+                        await updates.check(interactive: true)
+                    }
+                }
+            }
+            if !updates.status.isEmpty {
+                Text(updates.status)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 4)
+            }
+
             MenuRow(title: "About") {
                 if let url = URL(string: "https://github.com/AgarwalAarush/Caffeinated") {
                     openURL(url)
@@ -86,6 +107,12 @@ struct ContentView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var updateRowTitle: String {
+        if updates.isBusy, updates.availableVersion != nil { return "Installing…" }
+        if let version = updates.availableVersion { return "Install \(version)" }
+        return "Check for Updates"
     }
 
     private var settingsDisclosure: some View {
@@ -114,6 +141,7 @@ struct ContentView: View {
             settingsRow("Pause on Battery", isOn: $manager.pauseOnBattery)
             settingsRow("Allow Display Sleep", isOn: $manager.allowDisplaySleep)
             settingsRow("Notify When Timer Ends", isOn: $manager.notifyOnTimerEnd)
+            settingsRow("Check Automatically", isOn: $updates.autoCheck)
         }
         .padding(.bottom, 6)
     }
@@ -211,6 +239,7 @@ private struct MenuRow: View {
     let title: String
     var trailing: Trailing = .none
     var chevronRotation: Double = 0
+    var enabled: Bool = true
     let action: () -> Void
 
     @State private var hovering: Bool = false
@@ -240,6 +269,7 @@ private struct MenuRow: View {
             .foregroundStyle(hovering ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
         .onHover { hovering = $0 }
     }
 }
@@ -280,5 +310,6 @@ struct PillToggleStyle: ToggleStyle {
 #Preview {
     ContentView()
         .environmentObject(CaffeinateManager())
+        .environmentObject(UpdateChecker.shared)
         .frame(width: 280)
 }

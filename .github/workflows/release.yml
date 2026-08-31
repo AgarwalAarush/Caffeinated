@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26.5
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Caffeinated.xcodeproj \
+            -scheme Caffeinated \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$GITHUB_WORKSPACE/build/DerivedData" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Package zip
+        run: |
+          set -euo pipefail
+          APP="$GITHUB_WORKSPACE/build/DerivedData/Build/Products/Release/Caffeinated.app"
+          test -d "$APP"
+          # Real zip with Caffeinated.app at the root — GitHub Releases do not
+          # unwrap this the way Actions artifacts do.
+          ditto -c -k --keepParent "$APP" "$GITHUB_WORKSPACE/Caffeinated.zip"
+          ls -lh "$GITHUB_WORKSPACE/Caffeinated.zip"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="$(printf '%s\n' \
+            'Download **Caffeinated.zip**, unzip once, and drag **Caffeinated.app** to Applications.' \
+            '' \
+            'Ad-hoc signed: right-click → Open the first time. Later versions install from **Check for Updates** in the app.')"
+          gh release create "$TAG" "$GITHUB_WORKSPACE/Caffeinated.zip" \
+            --title "Caffeinated ${TAG#v}" \
+            --notes "$NOTES"
