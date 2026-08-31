@@ -59,11 +59,14 @@ struct CaptureView: View {
     }
 
     private var hint: some View {
-        Text("Esc cancels · Return confirms a selection")
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 8)
+        VStack(alignment: .leading, spacing: 2) {
+            Text("⌃⇧4 Selection · ⌃⇧5 Window · ⌃⇧3 Screen")
+            Text("Esc cancels overlay · Return confirms a selection")
+        }
+        .font(.system(size: 10))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
     }
 
     private var options: some View {
@@ -99,6 +102,7 @@ struct CaptureView: View {
                 .frame(maxHeight: 90)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             HStack(spacing: 8) {
+                Button("Edit") { controller.editLast() }
                 Button("Copy") { controller.copyLast() }
                 Button("Save…") { controller.saveLast() }
                 Spacer()

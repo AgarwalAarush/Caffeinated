@@ -47,7 +47,7 @@ final class ScreenshotController: ObservableObject {
     @Published var statusMessage: String?
 
     private var session: CaptureOverlaySession?
-    private var preview: CapturePreviewPanel?
+    private var preview: CaptureEditorPanel?
 
     init() {
         self.copyOnCapture = UserDefaults.standard.object(forKey: "copyOnCapture") as? Bool ?? true
@@ -106,7 +106,7 @@ final class ScreenshotController: ObservableObject {
             copyToClipboard(image)
             statusMessage = "Copied to clipboard"
         }
-        showPreview(image)
+        showEditor(image)
     }
 
     func copyLast() {
@@ -146,15 +146,40 @@ final class ScreenshotController: ObservableObject {
         }
     }
 
-    private func showPreview(_ image: NSImage) {
-        preview?.close()
-        let panel = CapturePreviewPanel(image: image) { [weak self] in
-            self?.copyLast()
-        } onSave: { [weak self] in
-            self?.saveLast()
-        } onClose: { [weak self] in
-            self?.preview = nil
+    func editLast() {
+        guard let lastImage else { return }
+        showEditor(lastImage)
+    }
+
+    func copyEdited(_ image: NSImage) {
+        lastImage = image
+        copyToClipboard(image)
+        statusMessage = "Copied to clipboard"
+    }
+
+    func saveEdited(_ image: NSImage) {
+        lastImage = image
+        save(image)
+    }
+
+    private func showEditor(_ image: NSImage) {
+        if let existing = preview {
+            existing.orderOut(nil)
         }
+        preview = nil
+        let panel = CaptureEditorPanel(
+            image: image,
+            onCopy: { [weak self] output in
+                self?.copyEdited(output)
+            },
+            onSave: { [weak self] output in
+                self?.saveEdited(output)
+            },
+            onClose: { [weak self] output in
+                if let output { self?.lastImage = output }
+                self?.preview = nil
+            }
+        )
         preview = panel
         panel.show()
     }
@@ -617,103 +642,5 @@ final class FreezeOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.72).setFill()
         NSBezierPath(roundedRect: bg, xRadius: 6, yRadius: 6).fill()
         title.draw(at: origin, withAttributes: attrs)
-    }
-}
-
-// MARK: - Preview panel
-
-final class CapturePreviewPanel: NSPanel {
-    private var onClose: () -> Void
-
-    init(
-        image: NSImage,
-        onCopy: @escaping () -> Void,
-        onSave: @escaping () -> Void,
-        onClose: @escaping () -> Void
-    ) {
-        self.onClose = onClose
-        let width: CGFloat = 280
-        let maxImageHeight: CGFloat = 160
-        let aspect = image.size.height == 0 ? 1 : image.size.width / image.size.height
-        let imageHeight = min(maxImageHeight, width / max(aspect, 0.3))
-        let height = imageHeight + 52
-
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        title = "Capture"
-        titlebarAppearsTransparent = true
-        isFloatingPanel = true
-        level = .floating
-        hidesOnDeactivate = false
-        isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-
-        let root = CapturePreviewView(
-            image: image,
-            imageHeight: imageHeight,
-            onCopy: onCopy,
-            onSave: onSave,
-            onClose: { [weak self] in
-                self?.close()
-            }
-        )
-        contentView = NSHostingView(rootView: root)
-    }
-
-    func show() {
-        NSApp.activate(ignoringOtherApps: true)
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let vis = screen.visibleFrame
-            let origin = NSPoint(x: vis.maxX - frame.width - 16, y: vis.maxY - frame.height - 16)
-            setFrameOrigin(origin)
-        }
-        makeKeyAndOrderFront(nil)
-    }
-
-    override func close() {
-        super.close()
-        onClose()
-    }
-}
-
-private struct CapturePreviewView: View {
-    let image: NSImage
-    let imageHeight: CGFloat
-    let onCopy: () -> Void
-    let onSave: () -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(nsImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: imageHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.horizontal, 10)
-                .padding(.top, 28)
-            HStack(spacing: 8) {
-                previewButton("Copy", action: onCopy)
-                previewButton("Save…", action: onSave)
-                previewButton("Done", action: onClose)
-            }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 10)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func previewButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-        }
-        .buttonStyle(.bordered)
     }
 }
