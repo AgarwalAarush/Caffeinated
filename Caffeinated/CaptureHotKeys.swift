@@ -16,13 +16,19 @@ final class CaptureHotKeys {
         guard !installed else { return }
         installed = true
 
+        CaptureHotKeyBridge.onID = { id in
+            Task { @MainActor in
+                CaptureHotKeys.shared.handle(id: id)
+            }
+        }
+
         var spec = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
         InstallEventHandler(
             GetApplicationEventTarget(),
-            caffeinatedHotKeyCallback,
+            CaptureHotKeyBridge.proc,
             1,
             &spec,
             nil,
@@ -60,27 +66,26 @@ final class CaptureHotKeys {
     }
 }
 
-private func caffeinatedHotKeyCallback(
-    _: EventHandlerCallRef?,
-    event: EventRef?,
-    _: UnsafeMutableRawPointer?
-) -> OSStatus {
-    guard let event else { return noErr }
-    var hotKeyID = EventHotKeyID()
-    let status = GetEventParameter(
-        event,
-        EventParamName(kEventParamDirectObject),
-        EventParamType(typeEventHotKeyID),
-        nil,
-        MemoryLayout<EventHotKeyID>.size,
-        nil,
-        &hotKeyID
-    )
-    guard status == noErr else { return status }
-    DispatchQueue.main.async {
-        Task { @MainActor in
-            CaptureHotKeys.shared.handle(id: hotKeyID.id)
+nonisolated private enum CaptureHotKeyBridge {
+    nonisolated(unsafe) static var onID: ((UInt32) -> Void)?
+
+    nonisolated static let proc: EventHandlerProcPtr = { _, event, _ in
+        guard let event else { return noErr }
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+        guard status == noErr else { return status }
+        let id = hotKeyID.id
+        DispatchQueue.main.async {
+            CaptureHotKeyBridge.onID?(id)
         }
+        return noErr
     }
-    return noErr
 }

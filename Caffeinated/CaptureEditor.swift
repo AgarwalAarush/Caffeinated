@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -297,10 +298,13 @@ final class CaptureEditorPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isMovableByWindowBackground = true
 
+        let session = self.session
+        let copy = onCopy
+        let save = onSave
         let root = CaptureEditorView(
             session: session,
-            onCopy: { onCopy(session.flattened()) },
-            onSave: { onSave(session.flattened()) },
+            onCopy: { copy(session.flattened()) },
+            onSave: { save(session.flattened()) },
             onDone: { [weak self] in self?.close() }
         )
         contentView = NSHostingView(rootView: root)
